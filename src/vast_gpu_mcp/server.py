@@ -353,9 +353,11 @@ def _all_jobs() -> list[dict]:
     metas = []
     for p in settings.jobs_dir.glob("*.json"):
         try:
-            metas.append(json.loads(p.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
+            m = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             continue
+        if isinstance(m, dict) and "job_id" in m and "start_ts" in m:
+            metas.append(m)
     return [_job_state(m) for m in sorted(metas, key=lambda m: m["start_ts"])]
 
 
@@ -464,7 +466,7 @@ def start_job(command: str, name: str = "", cwd: str = "", env: dict | None = No
     exit_file = settings.jobs_dir / f"{job_id}.exit"
     workdir = str(_resolve(cwd) if cwd else settings.workdir)
     log.write_bytes(b"")
-    spec = settings.jobs_dir / f"{job_id}.spec.json"
+    spec = settings.jobs_dir / f"{job_id}.spec"  # not *.json: that pattern is job records
     _write_private(spec, json.dumps({"argv": _shell_argv(command), "cwd": workdir, "env": _env(env),
                                      "log": str(log), "exit_file": str(exit_file)}))
     # -I: the runner ignores PYTHONPATH etc.; the job itself gets the env from the spec

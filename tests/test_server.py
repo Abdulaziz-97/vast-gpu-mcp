@@ -243,6 +243,21 @@ async def test_unknown_job_and_path_traversal(client):
         assert "error" in await call(client, "stop_job", {"job_id": bad})
 
 
+
+async def test_stray_files_in_jobs_dir_are_ignored(client):
+    # regression: a job's launch file once matched *.json and crashed gpu_status on Linux
+    jd = server.settings.jobs_dir
+    jd.mkdir(parents=True, exist_ok=True)
+    (jd / "a.json").write_text("{}")
+    (jd / "b.json").write_text("[1, 2]")
+    (jd / "c.json").write_text("{not json")
+    (jd / "d.spec.json").write_text('{"argv": ["x"], "env": {}}')
+    job = await call(client, "start_job", {"command": "python -c \"print(1)\""})
+    assert (await call(client, "list_jobs"))["count"] == 1
+    assert "error" not in await call(client, "gpu_status")
+    await wait_done(client, job["job_id"])
+
+
 # ---------------------------------------------------------------- llm
 
 async def test_llm_generate_without_transformers_gives_clear_error(client, monkeypatch):
