@@ -1,13 +1,23 @@
 # vast-gpu-mcp
 
-An [MCP](https://modelcontextprotocol.io) server that turns a rented GPU machine into a remote
-workstation for AI agents such as Claude. The agent can run commands, start training jobs that
-keep running in the background, watch the GPU, read logs, and run quick LLM inference, all on
-the GPU box while you chat from your own computer.
+[![tests](https://github.com/Abdulaziz-97/vast-gpu-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/Abdulaziz-97/vast-gpu-mcp/actions/workflows/test.yml)
 
-It was built and tested on [Vast.ai](https://vast.ai) PyTorch instances, but it works on any
-Linux machine with an NVIDIA GPU that you can reach over SSH (RunPod, Lambda, a lab server, a
-box under your desk).
+An [MCP](https://modelcontextprotocol.io) server that turns a machine into a remote workstation
+for AI agents such as Claude. The agent can run commands, start training jobs that keep running
+in the background, watch the GPU, read logs, and run quick LLM inference, all on that machine
+while you chat from your own computer.
+
+It was built on [Vast.ai](https://vast.ai) GPU instances and works on any machine:
+
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| Shell for commands | bash | bash | PowerShell |
+| GPU detection | NVIDIA, AMD | Apple Silicon | NVIDIA |
+| `llm_generate` | CUDA / ROCm / CPU | MPS / CPU | CUDA / CPU |
+| Background jobs survive restarts | yes | yes | yes |
+
+Every tool works without a GPU too; work then runs on the CPU. The test suite runs on all three
+systems on every push.
 
 > **Unofficial.** This project is not affiliated with or endorsed by Vast.ai.
 
@@ -15,9 +25,9 @@ box under your desk).
 
 | Tool | What it does |
 | --- | --- |
-| `gpu_status` | Memory, power draw, temperature, clocks, a `busy` flag, running jobs |
-| `system_status` | CPU, RAM, disk, uptime, Python environment |
-| `run_shell` | Run a bash command and return exit code, stdout, stderr (short tasks) |
+| `gpu_status` | GPUs (NVIDIA, AMD, Apple) with memory, power, temperature, a `busy` flag, running jobs |
+| `system_status` | OS, CPU, RAM, disk, uptime, which shell is used, Python environment |
+| `run_shell` | Run a command and return exit code, stdout, stderr (short tasks) |
 | `start_job` | Run a long command in the background (training, downloads, servers) |
 | `job_status` | State, exit code, runtime and log tail of a job |
 | `list_jobs` | All jobs, including ones started before a server restart |
@@ -26,9 +36,10 @@ box under your desk).
 | `llm_generate` | Text generation with a Hugging Face model kept in VRAM (optional `[llm]` extra) |
 | `free_gpu_memory` | Unload that model so training gets the whole card |
 
-Commands run in bash with the machine's Python venv active, so `python`, `pip`, `torchrun`,
-`accelerate` and `nvcc` work as-is. Background jobs are detached from the server: they keep
-running if the server restarts or your connection drops, and their state is saved to disk.
+Commands run with the machine's Python environment active, so `python`, `pip`, `torchrun` and
+`accelerate` work as-is. Background jobs are detached from the server: they keep running if the
+server restarts or your connection drops, and their state is saved to disk. `stop_job` stops a
+job together with every process it started.
 
 ## Security: read this first
 
@@ -41,11 +52,19 @@ it, and it is only safe because nobody but you can reach it:
 
 Your SSH key is the only lock. Anyone who can talk to the server can do anything on the machine.
 
-## Install (on the GPU machine)
+## Install (on the machine that does the work)
+
+Python 3.10 or newer, on Linux, macOS or Windows:
 
 ```bash
-pip install "git+https://github.com/Abdulaziz-97/vast-gpu-mcp"            # core
-pip install "vast-gpu-mcp[llm] @ git+https://github.com/Abdulaziz-97/vast-gpu-mcp"     # + llm_generate (needs PyTorch, which GPU images ship)
+pip install "git+https://github.com/Abdulaziz-97/vast-gpu-mcp"
+```
+
+For `llm_generate`, add the `[llm]` extra and [PyTorch](https://pytorch.org/get-started/locally/)
+(GPU cloud images already ship PyTorch):
+
+```bash
+pip install "vast-gpu-mcp[llm] @ git+https://github.com/Abdulaziz-97/vast-gpu-mcp"
 ```
 
 On Vast.ai PyTorch images, install into the image's venv: `/venv/main/bin/pip install "git+https://github.com/Abdulaziz-97/vast-gpu-mcp"`.
@@ -67,16 +86,23 @@ Use the SSH port and address your provider shows. Your SSH key must load without
 (use `ssh-agent`). Jobs and their logs survive between sessions; a model loaded by
 `llm_generate` does not.
 
+To use the GPU in your own computer, skip SSH and let the client start the server directly:
+
+```bash
+claude mcp add local-gpu --scope user -- vast-gpu-mcp --transport stdio
+```
+
 ### Option B: HTTP server plus SSH tunnel (server stays up)
 
-On the GPU machine, start the server in the background:
+On a Linux or macOS machine, install and start the server in the background:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Abdulaziz-97/vast-gpu-mcp/main/scripts/start_server.sh
 bash start_server.sh
 ```
 
-Or run it yourself: `vast-gpu-mcp --transport http` (listens on `127.0.0.1:8765`).
+On any machine, including Windows, you can also run it yourself:
+`vast-gpu-mcp --transport http` (listens on `127.0.0.1:8765`).
 
 On your computer, keep a tunnel open. The script reconnects on its own and alternates between
 the routes you give it (Vast.ai offers a direct route and a proxy route, and either can drop):
@@ -103,6 +129,7 @@ claude mcp add --transport http --scope user vast-gpu http://localhost:8765/mcp
 | `--port` | `MCP_PORT` | `8765` |
 | `--workdir` (commands, files, job logs) | `MCP_WORKDIR` | home directory |
 | `--venv` (activated for commands; `''` for none) | `MCP_VENV` | the server's own venv, else `/venv/main` |
+| `--shell` (for `run_shell` and `start_job`) | `MCP_SHELL` | bash (Linux/macOS), PowerShell (Windows) |
 | `--model` (default for `llm_generate`) | `MODEL_ID` | `Qwen/Qwen2.5-7B-Instruct` |
 
 Job metadata and logs go to `<workdir>/mcp_jobs/`. On machines with a `/workspace` disk,
@@ -112,6 +139,13 @@ Job metadata and logs go to `<workdir>/mcp_jobs/`. On machines with a `/workspac
 
 - **GPU utilization reads 0% on many cloud containers.** The container cannot see it. Power
   draw and memory used are reliable, and `gpu_status` sets `busy` from them.
+- **On Windows, commands are PowerShell.** Windows PowerShell 5.1 has no `&&`; chain commands
+  with `;`. Install [PowerShell 7](https://aka.ms/powershell) (`pwsh`) and it is used
+  automatically, or pick another shell with `--shell`.
+- **Windows jobs start through WMI** when the server runs inside a job object (MCP clients use
+  them to clean up), so jobs are not killed when the client disconnects.
+- **Apple Silicon** has no power or utilization readings without root; `gpu_status` reports the
+  chip and its unified memory.
 - **The overhead is small.** On an RTX 5090, a matmul benchmark run through the server reached
   the same speed as one run directly over SSH (215 vs 214 TFLOPS fp16), and an MCP round trip
   took about 0.2 s.
@@ -120,15 +154,17 @@ Job metadata and logs go to `<workdir>/mcp_jobs/`. On machines with a `/workspac
 
 ## Examples
 
-- `examples/gpu_bench.py`: matmul TFLOPS and memory bandwidth.
-- `examples/train_cifar.py`: ResNet-18 on CIFAR-10 with bf16 and the data held on the GPU.
-  Ask your agent to `start_job("pip install datasets && python train_cifar.py --epochs 20")`.
+Both pick the best device available (CUDA/ROCm, Apple MPS or CPU).
+
+- `examples/gpu_bench.py`: matmul TFLOPS per dtype and memory bandwidth.
+- `examples/train_cifar.py`: ResNet-18 on CIFAR-10 with the data held on the device. Needs
+  `pip install datasets torchvision`; `--limit 1024` trains on a small subset for a quick check.
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest          # runs on any Linux machine; no GPU needed
+pytest          # Linux, macOS or Windows; no GPU needed (LLM tests run if torch is installed)
 ```
 
 ## License
