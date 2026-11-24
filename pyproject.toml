@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vast-gpu-mcp"
-version = "0.1.0"
-description = "MCP server that turns a rented GPU machine (Vast.ai or any Linux box) into a remote workstation for AI agents like Claude."
+version = "0.2.0"
+description = "MCP server that turns any machine (Linux, macOS or Windows; NVIDIA, AMD, Apple Silicon or CPU) into a remote GPU workstation for AI agents like Claude."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -16,7 +16,7 @@ classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "Operating System :: POSIX :: Linux",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -28,7 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 # PyTorch is not listed: install the build that matches your CUDA (cloud GPU images ship it).
 llm = ["transformers>=4.45", "accelerate>=0.34"]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-timeout>=2.3"]
 
 [project.scripts]
 vast-gpu-mcp = "vast_gpu_mcp.cli:main"
@@ -42,3 +42,5 @@ include = ["src", "scripts", "examples", "tests", "README.md", "LICENSE", "CHANG
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+timeout = 180

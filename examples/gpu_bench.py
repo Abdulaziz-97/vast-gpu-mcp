@@ -1,52 +1,68 @@
-"""GPU benchmark: matmul TFLOPS (fp16/bf16/fp32), memory bandwidth, and timing.
-Run directly on the instance or via the MCP run_shell tool to compare overhead."""
+"""Benchmark: matmul TFLOPS per dtype and memory bandwidth on the best device available
+(CUDA/ROCm GPU, Apple Silicon MPS, or CPU). Prints one JSON line.
+
+Run it directly and through the MCP server's run_shell to compare overhead."""
 import json
 import time
 
 import torch
 
-assert torch.cuda.is_available(), "CUDA not available"
-dev = torch.device("cuda")
-res = {"gpu": torch.cuda.get_device_name(0), "torch": torch.__version__,
-       "cuda": torch.version.cuda}
+if torch.cuda.is_available():
+    dev, name = "cuda", torch.cuda.get_device_name(0)
+elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+    dev, name = "mps", "Apple Silicon (MPS)"
+else:
+    dev, name = "cpu", "CPU"
+# problem sizes per device, so it finishes in seconds everywhere
+N, ITERS, GB = {"cuda": (8192, 50, 4), "mps": (2048, 10, 0.5), "cpu": (512, 3, 0.25)}[dev]
 
 
-def bench_matmul(dtype, n=8192, iters=50):
-    a = torch.randn(n, n, device=dev, dtype=dtype)
-    b = torch.randn(n, n, device=dev, dtype=dtype)
-    for _ in range(5):
-        a @ b
-    torch.cuda.synchronize()
+def sync():
+    if dev == "cuda":
+        torch.cuda.synchronize()
+    elif dev == "mps":
+        torch.mps.synchronize()
+
+
+def bench_matmul(dtype, n=N, iters=ITERS):
+    try:
+        a = torch.randn(n, n, device=dev, dtype=dtype)
+        b = torch.randn(n, n, device=dev, dtype=dtype)
+        for _ in range(3):
+            a @ b
+    except (RuntimeError, TypeError):  # dtype not supported on this device
+        return None
+    sync()
     t = time.perf_counter()
     for _ in range(iters):
         a @ b
-    torch.cuda.synchronize()
-    dt = time.perf_counter() - t
-    return round(2 * n**3 * iters / dt / 1e12, 1)
+    sync()
+    return round(2 * n**3 * iters / (time.perf_counter() - t) / 1e12, 3)
 
 
-def bench_bandwidth(gb=4, iters=20):
-    n = int(gb * 1e9 / 4)
-    x = torch.empty(n, device=dev, dtype=torch.float32)
+def bench_bandwidth(gb=GB, iters=10):
+    x = torch.empty(int(gb * 1e9 / 4), device=dev, dtype=torch.float32)
     y = torch.empty_like(x)
     for _ in range(3):
         y.copy_(x)
-    torch.cuda.synchronize()
+    sync()
     t = time.perf_counter()
     for _ in range(iters):
         y.copy_(x)
-    torch.cuda.synchronize()
-    dt = time.perf_counter() - t
-    return round(2 * n * 4 * iters / dt / 1e9, 1)  # read + write
+    sync()
+    return round(2 * x.numel() * 4 * iters / (time.perf_counter() - t) / 1e9, 1)  # read + write
 
 
+res = {"device": dev, "name": name, "torch": torch.__version__}
 t0 = time.perf_counter()
 res["tflops_fp16"] = bench_matmul(torch.float16)
 res["tflops_bf16"] = bench_matmul(torch.bfloat16)
-res["tflops_fp32_tf32off"] = bench_matmul(torch.float32, iters=10)
-torch.backends.cuda.matmul.allow_tf32 = True
-res["tflops_tf32"] = bench_matmul(torch.float32, iters=20)
+res["tflops_fp32"] = bench_matmul(torch.float32)
+if dev == "cuda":
+    torch.backends.cuda.matmul.allow_tf32 = True
+    res["tflops_tf32"] = bench_matmul(torch.float32)
 res["mem_bandwidth_gb_s"] = bench_bandwidth()
-res["max_vram_alloc_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+if dev == "cuda":
+    res["max_vram_alloc_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
 res["bench_seconds"] = round(time.perf_counter() - t0, 2)
 print(json.dumps(res))

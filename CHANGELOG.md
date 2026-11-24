@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0
+
+- Works on Linux, macOS and Windows. Commands use bash on Linux/macOS and PowerShell on Windows
+  (configurable with `--shell`), with real exit codes and UTF-8 output.
+- `gpu_status` detects NVIDIA, AMD (rocm-smi) and Apple Silicon GPUs and works without a GPU.
+- `llm_generate` runs on CUDA/ROCm, Apple MPS or CPU.
+- Background jobs use a small runner that is the same on every OS. On Windows they start through
+  WMI when needed, so they survive the MCP client disconnecting.
+- `stop_job` and `run_shell` timeouts stop the whole process tree on every OS.
+- `list_jobs` returns `{"jobs": [...], "count": n}`.
+- Examples run on any device; `train_cifar.py --limit` for quick checks.
+- CI on Linux, macOS and Windows.
+
 ## 0.1.0
 
 First release.

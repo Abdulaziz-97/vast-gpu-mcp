@@ -22,7 +22,7 @@ def _is_loopback(host: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="vast-gpu-mcp",
-        description="MCP server that lets an AI agent use a remote GPU machine "
+        description="MCP server that lets an AI agent use a (remote) GPU machine on Linux, macOS or Windows "
                     "(run commands, background training jobs, monitoring, LLM inference).",
     )
     ap.add_argument("--transport", choices=["stdio", "http"],
@@ -39,6 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--venv", default=None,
                     help="Python venv activated for commands (default: MCP_VENV, the server's own "
                          "venv, or /venv/main). Pass '' to disable.")
+    ap.add_argument("--shell", default=None,
+                    help="shell for run_shell/start_job (default: MCP_SHELL, else bash on Linux/macOS "
+                         "and PowerShell on Windows)")
     ap.add_argument("--model", default=None,
                     help="default Hugging Face model for llm_generate (default Qwen/Qwen2.5-7B-Instruct)")
     ap.add_argument("--allow-public", action="store_true",
@@ -47,8 +50,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = ap.parse_args(argv)
 
-    if sys.platform == "win32":
-        ap.error("the server runs on the Linux GPU machine, not on Windows.")
     if args.transport == "http" and not _is_loopback(args.host) and not args.allow_public:
         ap.error(f"refusing to bind to {args.host}: this server executes arbitrary commands and "
                  "has no authentication. Keep it on 127.0.0.1 and use an SSH tunnel, "
@@ -56,10 +57,10 @@ def main(argv: list[str] | None = None) -> int:
 
     from .server import configure, mcp  # imported after arg checks: fastmcp is slow to import
 
-    s = configure(workdir=args.workdir, venv=args.venv, model=args.model)
+    s = configure(workdir=args.workdir, venv=args.venv, model=args.model, shell=args.shell)
     # stdout belongs to the MCP protocol in stdio mode, so log to stderr
     print(f"vast-gpu-mcp {__version__}: transport={args.transport} workdir={s.workdir} "
-          f"venv={s.venv or 'none'}", file=sys.stderr, flush=True)
+          f"venv={s.venv or 'none'} shell={s.shell}", file=sys.stderr, flush=True)
     if args.transport == "stdio":
         mcp.run(transport="stdio", show_banner=False)
     else:
