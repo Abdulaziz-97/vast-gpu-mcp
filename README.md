@@ -44,11 +44,11 @@ Your SSH key is the only lock. Anyone who can talk to the server can do anything
 ## Install (on the GPU machine)
 
 ```bash
-pip install vast-gpu-mcp            # core
-pip install "vast-gpu-mcp[llm]"     # + llm_generate (needs PyTorch, which GPU images ship)
+pip install "git+https://github.com/Abdulaziz-97/vast-gpu-mcp"            # core
+pip install "vast-gpu-mcp[llm] @ git+https://github.com/Abdulaziz-97/vast-gpu-mcp"     # + llm_generate (needs PyTorch, which GPU images ship)
 ```
 
-On Vast.ai PyTorch images, install into the image's venv: `/venv/main/bin/pip install vast-gpu-mcp`.
+On Vast.ai PyTorch images, install into the image's venv: `/venv/main/bin/pip install "git+https://github.com/Abdulaziz-97/vast-gpu-mcp"`.
 
 ## Connect it to your MCP client
 

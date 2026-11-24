@@ -2,11 +2,11 @@
 # Run ON the GPU machine. Installs vast-gpu-mcp into the image's venv (if it has one)
 # and starts the HTTP server in the background on 127.0.0.1:8765.
 #
-#   bash start_server.sh                 # install from PyPI
+#   bash start_server.sh                 # install from GitHub
 #   bash start_server.sh ./vast_gpu_mcp-0.1.0-py3-none-any.whl   # or a local wheel / path / git URL
 set -euo pipefail
 
-SRC="${1:-vast-gpu-mcp}"
+SRC="${1:-git+https://github.com/Abdulaziz-97/vast-gpu-mcp}"
 PORT="${MCP_PORT:-8765}"
 LOG="${MCP_LOG:-$HOME/vast-gpu-mcp.log}"
 
